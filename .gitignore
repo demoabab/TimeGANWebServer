@@ -1,0 +1,25 @@
+# 编译目录和产物
+build/
+*.o
+server
+
+# 模型文件（大文件，建议用 Git LFS 或忽略）
+*.pt
+*.pth
+
+# 日志文件
+*.log
+
+# IDE 配置
+.vscode/
+.idea/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 敏感配置（如果存在）
+config_local.h
+
+# LibTorch 库文件（太大，不提交到 Git）
+libtorch/

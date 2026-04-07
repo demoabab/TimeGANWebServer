@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水下机械臂故障诊断系统</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body { background-color: #f8f9fa; }
+        .container { max-width: 800px; margin-top: 50px; }
+        .drop-area {
+            border: 2px dashed #007bff;
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+            background: white;
+            transition: 0.3s;
+        }
+        .drop-area:hover { background-color: #e9ecef; }
+        .drop-area.dragover { background-color: #cfe2ff; border-color: #0d6efd; }
+        .preview { margin-top: 20px; max-height: 300px; overflow-y: auto; background: #f1f3f5; padding: 10px; border-radius: 8px; font-family: monospace; font-size: 12px; }
+        .btn-download { margin-top: 20px; }
+        .spinner { display: none; margin: 20px auto; }
+        .result-card { margin-top: 30px; padding: 20px; background: white; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="text-center mb-4">
+        <i class="fas fa-robot fa-3x text-primary"></i>
+        <h1 class="mt-2">水下柔性机械臂故障诊断</h1>
+        <p class="lead">上传包含传感器数据的 CSV 文件，获得生成诊断数据</p>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <!-- 拖拽区域（不再绑定 click 事件） -->
+            <div id="dropArea" class="drop-area">
+                <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3"></i>
+                <p>拖拽 CSV 文件到此处</p>
+                <input type="file" id="fileInput" accept=".csv" style="display:none">
+            </div>
+            <!-- 独立的选择文件按钮 -->
+            <div class="text-center mt-3">
+                <button class="btn btn-outline-primary" onclick="document.getElementById('fileInput').click()">
+                    <i class="fas fa-folder-open"></i> 选择文件
+                </button>
+                <button id="downloadSampleBtn" class="btn btn-secondary ms-2">
+                    <i class="fas fa-download"></i> 下载示例 CSV
+                </button>
+            </div>
+            <div class="mb-3 mt-3">
+                <label for="numSamples" class="form-label">需要生成的样本数（可选）</label>
+                <input type="number" class="form-control" id="numSamples" min="1" step="1" value="1">
+                <div class="form-text">如果输入 CSV 文件包含多个完整样本，将只使用前 N 个样本。如果未指定，则使用所有完整样本。</div>
+            </div>
+            <div id="preview" class="preview" style="display:none;"></div>
+            <div id="spinner" class="spinner text-center">
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="mt-2">正在处理，请稍候...</p>
+            </div>
+            <div id="result" class="result-card" style="display:none;">
+                <h5><i class="fas fa-download"></i> 诊断结果</h5>
+                <div id="resultInfo"></div>
+                <button id="downloadBtn" class="btn btn-success btn-download w-100">
+                    <i class="fas fa-file-csv"></i> 下载结果 CSV
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const dropArea = document.getElementById('dropArea');
+    const fileInput = document.getElementById('fileInput');
+    const previewDiv = document.getElementById('preview');
+    const spinner = document.getElementById('spinner');
+    const resultCard = document.getElementById('result');
+    const resultInfo = document.getElementById('resultInfo');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const numSamplesInput = document.getElementById('numSamples');
+
+    // 拖拽事件（不再绑定 click）
+    dropArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropArea.classList.add('dragover');
+    });
+    dropArea.addEventListener('dragleave', () => {
+        dropArea.classList.remove('dragover');
+    });
+    dropArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropArea.classList.remove('dragover');
+        const files = e.dataTransfer.files;
+        if (files.length > 0) handleFile(files[0]);
+    });
+
+    // 文件选择框 change 事件
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length) handleFile(e.target.files[0]);
+    });
+
+    // 处理文件上传
+    function handleFile(file) {
+        if (!file.name.endsWith('.csv')) {
+            alert('请选择 CSV 文件');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const csvContent = e.target.result;
+            // 预览前10行
+            const lines = csvContent.split('\n').slice(0, 10);
+            previewDiv.innerHTML = '<strong>文件预览 (前10行):</strong><br>' + lines.join('<br>');
+            previewDiv.style.display = 'block';
+            sendCSV(csvContent);
+        };
+        reader.onerror = function() {
+            alert('读取文件失败');
+        };
+        reader.readAsText(file, 'UTF-8');
+    }
+
+    // 发送 CSV 数据到后端
+    function sendCSV(csvData) {
+        let numSamples = numSamplesInput.value;
+        if (numSamples && !isNaN(parseInt(numSamples))) {
+            numSamples = parseInt(numSamples);
+        } else {
+            numSamples = null;
+        }
+        const payload = {
+            condition_id: 1,
+            csv_data: csvData,
+            num_samples: numSamples
+        };
+        spinner.style.display = 'block';
+        resultCard.style.display = 'none';
+
+        fetch('/diagnose', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(response => {
+            // 详细日志，便于调试
+            console.log('Response status:', response.status);
+            console.log('Response headers:', response.headers);
+            if (!response.ok) {
+                // 尝试获取错误文本或 JSON
+                return response.text().then(text => {
+                    console.error('Server error response:', text);
+                    throw new Error(`HTTP ${response.status}: ${text.slice(0, 200)}`);
+                });
+            }
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('text/csv')) {
+                return response.blob();
+            } else {
+                // 预期是 CSV，但返回了 JSON（可能是错误）
+                return response.json().then(err => {
+                    console.error('Server returned JSON instead of CSV:', err);
+                    throw new Error(err.message || '处理失败');
+                });
+            }
+        })
+        .then(blob => {
+            spinner.style.display = 'none';
+            const url = URL.createObjectURL(blob);
+            downloadBtn.onclick = () => {
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'diagnosis_result.csv';
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+            resultInfo.innerHTML = `<i class="fas fa-check-circle text-success"></i> 处理成功，共生成 ${numSamples ? numSamples : '所有'} 个样本的诊断数据。`;
+            resultCard.style.display = 'block';
+        })
+        .catch(err => {
+            spinner.style.display = 'none';
+            console.error('Fetch error:', err);
+            alert('错误: ' + err.message);
+        });
+    }
+
+    // 下载示例 CSV 文件（UTF-8 编码，64行，每行3个0.5）
+    document.getElementById('downloadSampleBtn').addEventListener('click', function() {
+        let content = '';
+        for (let i = 0; i < 64; i++) {
+            content += '0.5,0.5,0.5\n';
+        }
+        const blob = new Blob([content], {type: 'text/csv;charset=utf-8;'});
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.href = url;
+        link.setAttribute('download', 'sample.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    });
+</script>
+</body>
+</html>

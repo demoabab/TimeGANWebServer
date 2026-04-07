@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水下机械臂故障诊断系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .card {
+            border-radius: 25px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+            backdrop-filter: blur(10px);
+            background-color: rgba(255,255,255,0.95);
+        }
+        .btn-generate {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .btn-generate:hover {
+            transform: scale(1.02);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .drop-area {
+            border: 2px dashed #007bff;
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+            background: white;
+            transition: 0.3s;
+            cursor: pointer;
+        }
+        .drop-area:hover {
+            background-color: #e9ecef;
+        }
+        .drop-area.dragover {
+            background-color: #cfe2ff;
+            border-color: #0d6efd;
+        }
+        .preview {
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            background: #f1f3f5;
+            padding: 10px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .spinner {
+            display: none;
+        }
+        .result-card {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 12px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <div class="card">
+                <div class="card-body p-4 p-lg-5">
+                    <div class="text-center mb-4">
+                        <i class="fas fa-chart-line fa-4x text-primary mb-3"></i>
+                        <h2 class="fw-bold">智能故障诊断与数据生成</h2>
+                        <p class="text-muted">上传传感器数据，系统自动识别工况并生成高质量合成数据</p>
+                    </div>
+
+                    <!-- 文件上传区域（不再绑定 click 事件） -->
+                    <div id="dropArea" class="drop-area">
+                        <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3"></i>
+                        <p>拖拽 CSV 文件到此处</p>
+                        <input type="file" id="fileInput" accept=".csv" style="display:none">
+                    </div>
+
+                    <!-- 独立的文件选择按钮（避免重复触发） -->
+                    <div class="text-center mt-3">
+                        <button id="selectFileBtn" class="btn btn-outline-primary">
+                            <i class="fas fa-folder-open"></i> 选择文件
+                        </button>
+                    </div>
+
+                    <!-- 样本数输入 -->
+                    <div class="mb-3 mt-4">
+                        <label for="numSamples" class="form-label fw-semibold">生成样本数量</label>
+                        <input type="number" class="form-control text-center" id="numSamples" min="1" value="1" style="max-width: 150px; margin: 0 auto;">
+                        <div class="form-text text-center">每个样本为 64 行传感器数据（每行 3 个数值）</div>
+                    </div>
+
+                    <!-- 预览区域 -->
+                    <div id="preview" class="preview" style="display:none;"></div>
+
+                    <!-- 加载动画 -->
+                    <div id="spinner" class="spinner text-center mt-4">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <p class="mt-2">正在处理，请稍候...</p>
+                    </div>
+
+                    <!-- 结果区域 -->
+                    <div id="result" class="result-card" style="display:none;">
+                        <div id="resultInfo"></div>
+                        <button id="downloadBtn" class="btn btn-success w-100 mt-3">
+                            <i class="fas fa-download"></i> 下载生成数据 (CSV)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const dropArea = document.getElementById('dropArea');
+    const fileInput = document.getElementById('fileInput');
+    const selectFileBtn = document.getElementById('selectFileBtn');
+    const previewDiv = document.getElementById('preview');
+    const spinner = document.getElementById('spinner');
+    const resultDiv = document.getElementById('result');
+    const resultInfo = document.getElementById('resultInfo');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const numSamplesInput = document.getElementById('numSamples');
+
+    let csvContent = null;
+
+    // 拖拽事件（不绑定 click）
+    dropArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropArea.classList.add('dragover');
+    });
+    dropArea.addEventListener('dragleave', () => {
+        dropArea.classList.remove('dragover');
+    });
+    dropArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropArea.classList.remove('dragover');
+        const files = e.dataTransfer.files;
+        if (files.length > 0) handleFile(files[0]);
+    });
+
+    // 按钮点击打开文件选择框（独立，避免重复）
+    selectFileBtn.addEventListener('click', () => {
+        fileInput.click();
+    });
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length) handleFile(e.target.files[0]);
+    });
+
+    function handleFile(file) {
+        if (!file.name.endsWith('.csv')) {
+            alert('请选择 CSV 文件');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            csvContent = e.target.result;
+            // 预览前10行
+            const lines = csvContent.split('\n').slice(0, 10);
+            previewDiv.innerHTML = '<strong>文件预览 (前10行):</strong><br>' + lines.join('<br>');
+            previewDiv.style.display = 'block';
+            sendRequest();
+        };
+        reader.onerror = function() {
+            alert('读取文件失败');
+        };
+        reader.readAsText(file, 'UTF-8');
+    }
+
+    function sendRequest() {
+        if (!csvContent) {
+            alert('请先上传 CSV 文件');
+            return;
+        }
+        let numSamples = numSamplesInput.value;
+        if (numSamples && !isNaN(parseInt(numSamples))) {
+            numSamples = parseInt(numSamples);
+        } else {
+            numSamples = 1;
+        }
+        const payload = {
+            csv_data: csvContent,
+            num_samples: numSamples
+        };
+        spinner.style.display = 'block';
+        resultDiv.style.display = 'none';
+
+        fetch('/diagnose', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.text().then(text => {
+                    console.error('Server error response:', text);
+                    throw new Error(`HTTP ${response.status}: ${text.slice(0,200)}`);
+                });
+            }
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('text/csv')) {
+                return response.blob();
+            } else {
+                // 尝试解析 JSON 错误
+                return response.json().then(err => {
+                    throw new Error(err.message || '处理失败');
+                });
+            }
+        })
+        .then(blob => {
+            spinner.style.display = 'none';
+            const url = URL.createObjectURL(blob);
+            downloadBtn.onclick = () => {
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'generated_data.csv';
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+            resultInfo.innerHTML = `<i class="fas fa-check-circle text-success"></i> 处理成功，已生成 ${numSamples} 个样本。`;
+            resultDiv.style.display = 'block';
+        })
+        .catch(err => {
+            spinner.style.display = 'none';
+            console.error('Fetch error:', err);
+            alert('错误: ' + err.message);
+        });
+    }
+</script>
+</body>
+</html>
