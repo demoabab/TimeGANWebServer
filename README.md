@@ -227,4 +227,4 @@ https://doi.org/10.1016/j.neucom.2026.132667
 ---
 
 ## 📬 联系方式
-**项目维护**：Wei Wang (wangwei@hrbeu.edu.cn)
+**项目维护**：Wei Wang (heu_wangwei@163.com)
