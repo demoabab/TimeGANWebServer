@@ -66,32 +66,6 @@
 
 ---
 
-## 📁 项目结构
-
-```
-.
-├── CMakeLists.txt          # 构建配置（已集成 LibTorch）
-├── main.cpp                # 入口：解析命令行，启动服务器
-├── config.cpp/h            # 配置参数（端口、线程数等）
-├── webserver.cpp/h         # 主逻辑：事件循环、定时器、请求分发
-├── http_conn.cpp/h         # HTTP 协议解析、会话管理、诊断核心
-├── model_inference.cpp/h   # LibTorch 模型加载与推理封装
-├── threadpool.h            # C++11 线程池（完全重写，抛弃 pthread）
-├── locker.h                # RAII 互斥锁 / 信号量 / 条件变量
-├── lst_timer.cpp/h         # 时间轮定时器（替代原链表定时器）
-├── log/                    # 异步日志系统
-├── CGImysql/               # MySQL 连接池
-├── libtorch/               # LibTorch 运行时（需自行下载）
-├── models/                 # 存放 TorchScript 模型文件
-│   ├── classifier.pt
-│   ├── generator_0.pt
-│   ├── ...
-│   └── generator_7.pt
-└── root/                   # 静态网页资源（diagnose.html 等）
-```
-
----
-
 ## 🛠️ 编译与运行
 
 ### 1. 环境依赖
