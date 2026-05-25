@@ -179,4 +179,8 @@ void threadpool<T>::run() {
     }
 }
 
+<<<<<<< Updated upstream
 #endif // THREADPOOL_H
+=======
+#endif // THREADPOOL_H
+>>>>>>> Stashed changes

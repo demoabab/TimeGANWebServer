@@ -7,10 +7,12 @@
 
 using json = nlohmann::json;
 
-// ========== Session 管理 ==========
-#include <unordered_map>
+// ========== Session 管理（基于 Redis）==========
 #include <random>
 #include <string>
+#include "redis_manager.h"
+
+extern int g_session_ttl;  // 由 main 设置
 
 class SessionManager {
 public:
@@ -23,43 +25,27 @@ public:
         for (int i = 0; i < 32; ++i) {
             token[i] = hex[dis(gen)];
         }
-        lock_guard.lock();
-        sessions_[token] = username;
-        lock_guard.unlock();
+        RedisManager::getInstance()->setSession(token, username, g_session_ttl);
         return token;
     }
 
     static bool verify_session(const std::string& token, std::string& username) {
-        lock_guard.lock();
-        auto it = sessions_.find(token);
-        bool found = (it != sessions_.end());
-        if (found) username = it->second;
-        lock_guard.unlock();
-        return found;
+        return RedisManager::getInstance()->getSession(token, username);
     }
 
     static void remove_session(const std::string& token) {
-        lock_guard.lock();
-        sessions_.erase(token);
-        lock_guard.unlock();
+        RedisManager::getInstance()->delSession(token);
     }
-
-private:
-    static std::unordered_map<std::string, std::string> sessions_;
-    static locker lock_guard;
 };
-
-std::unordered_map<std::string, std::string> SessionManager::sessions_;
-locker SessionManager::lock_guard;
 
 // ========== 模型全局变量 ==========
 static ModelInference* classifier = nullptr;
 static std::vector<ModelInference*> generators(8, nullptr);
 
 void init_models() {
-    classifier = new ModelInference("models/classifier.pt");
+    classifier = new ModelInference("models/classifier.onnx");
     for (int i = 0; i < 8; ++i) {
-        std::string path = "models/generator_" + std::to_string(i) + ".pt";
+        std::string path = "models/generator_" + std::to_string(i) + ".onnx";
         generators[i] = new ModelInference(path);
     }
 }
@@ -567,6 +553,21 @@ http_conn::HTTP_CODE http_conn::do_request() {
                 strcpy(m_url, "/logError.html");
             }
         }
+    }
+
+    // 4. 登出处理（GET/POST /4）
+    if (*(p + 1) == '4') {
+        size_t pos = m_cookie.find("session_id=");
+        if (pos != std::string::npos) {
+            size_t end = m_cookie.find(";", pos);
+            std::string token = m_cookie.substr(pos + 11, end - pos - 11);
+            SessionManager::remove_session(token);
+        }
+        add_status_line(302, "Found");
+        add_response("Set-Cookie: session_id=; Path=/; Max-Age=0\r\n");
+        add_response("Location: /log.html\r\n");
+        add_blank_line();
+        return REDIRECT_REQUEST;
     }
 
     // 原有静态文件路由（可保留或删除，视需求而定）

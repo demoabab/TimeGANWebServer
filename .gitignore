@@ -23,3 +23,9 @@ config_local.h
 
 # LibTorch 库文件（太大，不提交到 Git）
 libtorch/
+
+# ONNX Runtime 库文件（太大，不提交到 Git）
+onnxruntime/
+
+# ONNX 模型文件（太大，不提交到 Git）
+*.onnx
