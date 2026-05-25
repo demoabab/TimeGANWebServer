@@ -42,6 +42,12 @@ public:
 
     //并发模型选择
     int actor_model;
+
+    // Redis 配置
+    char redis_host[64];
+    int redis_port;
+    char redis_password[64];
+    int session_ttl;      // 会话过期时间（秒）
 };
 
 #endif

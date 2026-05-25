@@ -1,5 +1,8 @@
 #include "config.h"
 #include "http_conn.h"   // 新增：包含 init_model 声明
+#include "redis_manager.h"
+
+int g_session_ttl = 3600;  // 全局会话 TTL，由 main 设置
 
 int main(int argc, char *argv[])
 {
@@ -15,6 +18,16 @@ int main(int argc, char *argv[])
     // 新增：初始化模型（路径相对于可执行文件所在目录）
     // 请确保模型文件放在 build/exported_models/model_normal_0g.pt
     init_models();
+
+    // 设置全局会话 TTL
+    g_session_ttl = config.session_ttl;
+
+    // 初始化 Redis 连接
+    RedisManager* redis = RedisManager::getInstance();
+    if (!redis->connect(config.redis_host, config.redis_port,
+                        config.redis_password, 2000)) {
+        printf("WARNING: Redis 连接失败，会话管理将不可用\n");
+    }
 
     WebServer server;
 

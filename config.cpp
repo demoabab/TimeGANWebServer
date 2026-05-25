@@ -1,4 +1,5 @@
 #include "config.h"
+#include <cstring>
 
 Config::Config(){
     //端口号,默认9006
@@ -30,11 +31,17 @@ Config::Config(){
 
     //并发模型,默认是proactor
     actor_model = 0;
+
+    // Redis 默认配置
+    strcpy(redis_host, "127.0.0.1");
+    redis_port = 6379;
+    redis_password[0] = '\0';
+    session_ttl = 3600;   // 默认1小时
 }
 
 void Config::parse_arg(int argc, char*argv[]){
     int opt;
-    const char *str = "p:l:m:o:s:t:c:a:";
+    const char *str = "p:l:m:o:s:t:c:a:R:r:w:T:";
     while ((opt = getopt(argc, argv, str)) != -1)
     {
         switch (opt)
@@ -77,6 +84,26 @@ void Config::parse_arg(int argc, char*argv[]){
         case 'a':
         {
             actor_model = atoi(optarg);
+            break;
+        }
+        case 'R':
+        {
+            strncpy(redis_host, optarg, sizeof(redis_host) - 1);
+            break;
+        }
+        case 'r':
+        {
+            redis_port = atoi(optarg);
+            break;
+        }
+        case 'w':
+        {
+            strncpy(redis_password, optarg, sizeof(redis_password) - 1);
+            break;
+        }
+        case 'T':
+        {
+            session_ttl = atoi(optarg);
             break;
         }
         default:

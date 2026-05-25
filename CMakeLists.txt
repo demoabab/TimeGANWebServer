@@ -4,14 +4,23 @@ cmake_minimum_required(VERSION 3.10)
 # 2. 项目名称
 project(TinyWebServer)
 
-# 3. 设置 C++ 标准 (LibTorch 需要 C++17)
+# 3. 设置 C++ 标准
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-# ---------- 新增：LibTorch 配置 ----------
-# 设置 LibTorch 路径（假设 libtorch 文件夹位于项目根目录下）
-set(CMAKE_PREFIX_PATH "${CMAKE_CURRENT_SOURCE_DIR}/libtorch")
-find_package(Torch REQUIRED)
+# ---------- ONNX Runtime 配置 ----------
+# 设置 ONNX Runtime 路径（默认项目根目录下的 onnxruntime/）
+if(NOT DEFINED ONNXRUNTIME_ROOT)
+    set(ONNXRUNTIME_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime")
+endif()
+set(ONNXRUNTIME_INCLUDE_DIRS "${ONNXRUNTIME_ROOT}/include")
+find_library(ONNXRUNTIME_LIB onnxruntime
+    PATHS "${ONNXRUNTIME_ROOT}/lib"
+    NO_DEFAULT_PATH)
+if(NOT ONNXRUNTIME_LIB)
+    find_library(ONNXRUNTIME_LIB onnxruntime REQUIRED)
+endif()
+message(STATUS "ONNX Runtime lib: ${ONNXRUNTIME_LIB}")
 # --------------------------------------
 
 # 4. 查找必要的库
@@ -20,6 +29,9 @@ find_package(Threads REQUIRED)
 
 # 4.2 查找 MySQL 库
 set(MYSQL_LIB mysqlclient)
+
+# 4.3 查找 hiredis 库
+find_library(HIREDIS_LIB hiredis REQUIRED)
 
 # 5. 包含头文件路径
 include_directories(
@@ -30,10 +42,10 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/http
     ${CMAKE_CURRENT_SOURCE_DIR}/log
     ${CMAKE_CURRENT_SOURCE_DIR}/CGImysql
-    ${TORCH_INCLUDE_DIRS}   # 新增：LibTorch 头文件
+    ${ONNXRUNTIME_INCLUDE_DIRS}
 )
 
-# 6. 定义源文件（添加 model_inference.cpp）
+# 6. 定义源文件
 set(SOURCE_FILES
     main.cpp
     webserver.cpp
@@ -43,14 +55,16 @@ set(SOURCE_FILES
     log/log.cpp
     CGImysql/sql_connection_pool.cpp
     model_inference.cpp   # 新增
+    redis_manager.cpp     # Redis 会话管理
 )
 
 # 7. 生成可执行文件
 add_executable(server ${SOURCE_FILES})
 
-# 8. 链接库（添加 Torch 库和 hiredis）
-target_link_libraries(server PRIVATE 
-    Threads::Threads 
-    ${MYSQL_LIB} 
-    ${TORCH_LIBRARIES}
+# 8. 链接库
+target_link_libraries(server PRIVATE
+    Threads::Threads
+    ${MYSQL_LIB}
+    ${HIREDIS_LIB}
+    ${ONNXRUNTIME_LIB}
 )
