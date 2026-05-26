@@ -1,144 +1,138 @@
-# CTAM‑TimeGAN Server: 水下柔性机械臂智能故障诊断与数据生成系统
+# CTAM-TimeGAN Server: 水下柔性机械臂智能故障诊断与数据生成系统
 
-> 将本人研究成果**CTAM‑TimeGAN**（通道‑时序注意力机制生成对抗网络）无缝部署到生产级C++ Web服务器。
-> 论文地址： https://doi.org/10.1016/j.neucom.2026.132667
+> 将本人研究成果 **CTAM-TimeGAN**（通道-时序注意力机制生成对抗网络）无缝部署到生产级 C++ Web 服务器。
+> 论文地址：https://doi.org/10.1016/j.neucom.2026.132667
 
 > **一键上传传感器数据 → 自动故障分类 → 调用专属生成模型 → 输出高保真时序样本**，彻底解决水下柔性机械臂故障诊断中的**数据严重不平衡**问题。
 
 ---
 
-## 📌 项目背景
+## 项目背景
 
 水下柔性机械臂在深海勘探、样本采集等任务中极易发生故障，但真实故障数据极难获取，导致传统诊断模型因类别严重不平衡（健康样本远多于故障样本）而失效。
 
-本项目的核心创新——**CTAM‑TimeGAN**（已发表于*Neurocomputing*）——通过**通道‑时序双重注意力机制**，在时序生成对抗网络中同时聚焦关键传感器通道与故障演化时间点，生成与真实故障信号高度一致的高质量时序数据。  
-该服务器将这一研究成果**工程化落地**，实现**实时诊断 + 按需生成**的闭环解决方案。
+本项目的核心创新——**CTAM-TimeGAN**（已发表于 *Neurocomputing*）——通过**通道-时序双重注意力机制**，在时序生成对抗网络中同时聚焦关键传感器通道与故障演化时间点，生成与真实故障信号高度一致的高质量时序数据。
+
+该服务器将研究成果**工程化落地**，实现**实时诊断 + 按需生成**的闭环解决方案。
 
 ---
 
-## ✨ 核心特性
+## 核心特性
 
-- 🧠 **高精度故障分类**  
-  内置 **CNN‑LSTM** 分类器，能够从原始压力信号中自动提取时空特征，准确识别 **4种工况 × 2种负载**（共8类）：
-  - 正常 (Normal)
-  - 泵堵塞 (Pump Blockage)
-  - 轻微泄漏 (Minor Leakage)
-  - 严重泄漏 (Heavy Leakage)  
-  - 分别对应 **0g** 与 **100g** 两种载荷
+- **高精度故障分类**
+  内置 CNN-LSTM 分类器，从原始压力信号中自动提取时空特征，准确识别 4种工况 × 2种负载（共8类）：
+  - 正常 (Normal)、泵堵塞 (Pump Blockage)、轻微泄漏 (Minor Leakage)、严重泄漏 (Heavy Leakage)
+  - 分别对应 0g 与 100g 两种载荷
 
-- 🎛️ **条件时序数据生成**  
-  分类器判定类别后，自动调用该类专属的 **CTAM‑TimeGAN 生成器**（共8个独立模型），生成任意数量的**合成故障信号**，用于数据增强、离线分析或模型再训练。
+- **条件时序数据生成**
+  分类器判定类别后，自动调用该类专属的 CTAM-TimeGAN 生成器（共8个独立模型），生成任意数量的合成故障信号，用于数据增强、离线分析或模型再训练。
 
-- ⚡ **高性能异步Web服务**  
-  - **Reactor/Proactor 双模式**支持高并发  
-  - **基于时间轮的高效定时器**，自动管理空闲连接  
-  - **线程池 + 数据库连接池**，充分利用多核CPU  
-  - **epoll + 非阻塞I/O**，单机可稳定处理数千并发请求
+- **高性能异步 Web 服务**
+  - Epoll + 非阻塞 I/O + Reactor/Proactor 双模式
+  - 时间轮定时器自动管理空闲连接
+  - 线程池 + MySQL 连接池充分利用多核 CPU
+  - mmap + writev 零拷贝技术优化静态文件传输
+  - 压测验证：1000 并发稳定运行，QPS 2800+，零崩溃
 
-- 🔐 **会话管理与权限控制**  
-  基于 `session_id` Cookie 的用户登录验证，支持注册/登录，防止未授权访问诊断接口。
+- **Redis 会话管理**
+  基于 Cookie 的登录验证，Session 持久化至 Redis 并支持 TTL 自动过期，解决进程重启丢失登录态问题。
 
-- 📦 **一键部署体验**  
-  所有模型（`classifier.pt` + 8个 `generator_*.pt`）预训练完毕，只需放置于指定目录即可开箱即用。
+- **ONNX Runtime 推理引擎**
+  从 LibTorch 迁移至 ONNX Runtime，消除 2GB+ 运行时依赖，推理体积降至 ~200MB，单次推理约 5ms。
 
----
-
-## 🏗️ 系统架构
-
-```
-[用户] ──(CSV/JSON)──► [C++ Web Server] ──┬─► [会话验证] ──► [CNN‑LSTM 分类器] ──┬─► [类别 0~7]
-                                            │                                      │
-                                            └──────────────────────────────────────┘
-                                                                                   │
-                                                                      ┌────────────┴────────────┐
-                                                                      ▼                         ▼
-                                                              [生成器 0] ... [生成器 7]   返回 CSV 样本
-                                                                      │                         │
-                                                                      └────────────┬────────────┘
-                                                                                   ▼
-                                                                            [用户下载]
-```
-
-- **Web 服务器**：基于 C++ 重构的高性能服务器（原 TinyWebServer 增强版）
-- **推理引擎**：LibTorch (PyTorch C++ 接口) 加载 TorchScript 模型
-- **数据库**：MySQL 存储用户凭证
-- **时序数据处理**：64 个时间步 × 3 个传感器通道（压力信号）
+- **Docker 一键部署**
+  `docker compose up -d` 即可启动 MySQL + Redis + Server 完整服务栈。
 
 ---
 
-## 🛠️ 编译与运行
+## 技术栈
 
-### 1. 环境依赖
-
-| 组件         | 版本/要求                     |
-| ------------ | ----------------------------- |
-| 操作系统     | Linux (Ubuntu 20.04+ 推荐)    |
-| C++ 编译器   | GCC 9+ 或 Clang 10+           |
-| CMake        | 3.10+                         |
-| LibTorch     | 2.0+ (CPU 或 CUDA 版本均可)    |
-| MySQL        | 5.7+ (需创建 `tinywebserver` 数据库及 `user` 表) |
-| nlohmann/json| 已包含在代码中（header‑only）   |
-
-### 2. 下载 LibTorch
-
-```bash
-# CPU 版本示例
-wget https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.0.1%2Bcpu.zip
-unzip libtorch-cxx11-abi-shared-with-deps-2.0.1+cpu.zip -d .
-```
-
-将解压后的 `libtorch` 文件夹放在项目根目录（与 `CMakeLists.txt` 同级）。
-
-### 3. 编译
-
-```bash
-mkdir build && cd build
-cmake .. -DCMAKE_PREFIX_PATH=`pwd`/../libtorch
-make -j$(nproc)
-```
-
-### 4. 准备模型文件
-
-将训练好的 `classifier.pt` 和 `generator_0.pt` ~ `generator_7.pt` 放入 `build/models/` 目录。  
-> 注：模型导出为 TorchScript 格式的命令可参考论文代码仓库（将在附录提供）。
-
-### 5. 配置 MySQL
-
-```sql
-CREATE DATABASE tinywebserver;
-USE tinywebserver;
-CREATE TABLE user (
-    username VARCHAR(50) PRIMARY KEY,
-    passwd   VARCHAR(50) NOT NULL
-);
-INSERT INTO user VALUES ('admin', 'admin123');  -- 测试账号
-```
-
-修改 `main.cpp` 中的数据库用户名/密码（默认 `root/root`）。
-
-### 6. 运行服务器
-
-```bash
-cd build
-./server -p 9006 -t 8 -s 8 -a 1
-```
-
-| 参数 | 含义                     | 默认值 |
-|------|--------------------------|--------|
-| `-p` | 监听端口                 | 9006   |
-| `-t` | 线程池大小               | 8      |
-| `-s` | 数据库连接池大小         | 8      |
-| `-a` | 并发模型 (0=Proactor,1=Reactor) | 1 |
+| 模块      | 技术选型                                     |
+| --------- | -------------------------------------------- |
+| I/O 模型  | Epoll (ET/LT) + 非阻塞 Socket                |
+| 并发模型  | Reactor / Proactor 双模式，线程池            |
+| HTTP 协议 | 手写状态机解析，GET/POST/302 重定向          |
+| 模型推理  | ONNX Runtime (CPU)，管理 1 分类器 + 8 生成器 |
+| 会话管理  | Redis 存储 Session + TTL 自动过期            |
+| 数据库    | MySQL 连接池 (RAII + 信号量)                 |
+| 日志      | 异步日志系统 (双缓冲区 + 条件变量)，按天滚动 |
+| 容器化    | Docker + Docker Compose                      |
+| 测试      | wrk 压力测试，覆盖静态文件与推理接口         |
 
 ---
 
-## 📡 API 使用说明
+## 系统架构
+
+```
+[用户] ──(CSV/JSON)──► [C++ Web Server] ──┬─► [Redis 会话验证]
+                                           │
+                                           ├─► [CNN-LSTM 分类器]
+                                           │        │
+                                           │   ┌────┴────┐
+                                           │   ▼         ▼
+                                           │ [类别 0~7]  [生成器 0~7]
+                                           │   │              │
+                                           │   └──────┬───────┘
+                                           │          ▼
+                                           └──► [返回 CSV 样本 / JSON 结果]
+```
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                      main thread                         │
+│  ┌──────────┐  ┌──────────┐  ┌────────────────────┐    │
+│  │ Epoll    │  │ Time     │  │ Signal Handler     │    │
+│  │ Event    │──│ Wheel    │──│ (SIGALRM/SIGTERM)  │    │
+│  │ Loop     │  │ Timer    │  └────────────────────┘    │
+│  └────┬─────┘  └──────────┘                              │
+│       │ EPOLLIN/EPOLLOUT                                  │
+│  ┌────▼──────────────────────────────────────────────┐  │
+│  │                   Thread Pool                       │  │
+│  │   Worker#1  Worker#2  Worker#3  ...  Worker#8      │  │
+│  └────┬──────────┬──────────┬──────────┬──────────────┘  │
+│       │          │          │          │                  │
+│  ┌────▼──────────▼──────────▼──────────▼──────────────┐  │
+│  │                HTTP State Machine                    │  │
+│  │     Request Line → Headers → Body → do_request()    │  │
+│  └────┬───────────┬──────────┬─────────────────────────┘  │
+│       │           │          │                             │
+│  ┌────▼────┐ ┌───▼───┐ ┌───▼───────────┐                 │
+│  │  MySQL  │ │ Redis │ │ ONNX Runtime  │                 │
+│  │  Pool   │ │Session│ │   9 Models    │                 │
+│  └─────────┘ └───────┘ └───────────────┘                 │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 性能测试
+
+测试环境：Ubuntu 22.04, Intel Xeon E5-2678 v3, MySQL 5.7, Redis 6.0
+
+### 静态文件 (GET /diagnose.html, mmap + writev)
+
+| 并发连接 | QPS  | 平均延迟 | P99 延迟 | 吞吐量    | 超时 |
+| -------- | ---- | -------- | -------- | --------- | ---- |
+| 100      | 2952 | 32ms     | 252ms    | 26.3 MB/s | 41   |
+| 500      | 2819 | 54ms     | 409ms    | 25.1 MB/s | 302  |
+| 1000     | 2841 | 57ms     | 452ms    | 25.3 MB/s | 675  |
+
+### 推理接口 (POST /diagnose, ONNX Runtime CPU)
+
+| 并发连接 | QPS  | 平均延迟 | P99 延迟 |
+| -------- | ---- | -------- | -------- |
+| 100      | 1714 | 54ms     | 119ms    |
+| 500      | 1630 | 272ms    | 449ms    |
+
+> 详细压测报告见 [bench/README.md](bench/README.md)
+
+---
+
+## API 接口
 
 ### POST `/diagnose` —— 故障诊断与数据生成
 
-#### 请求格式：`Content-Type: application/json`
-
-#### 场景一：用户上传 CSV 样本 → 服务器分类 → 生成同类样本
+**场景一：上传 CSV 样本 → 分类 → 生成同类样本**
 
 ```json
 {
@@ -147,12 +141,7 @@ cd build
 }
 ```
 
-- `csv_data`：字符串，每行代表一个时间步的三个传感器读数，共 **64 行**。
-- `num_samples`：整数，希望生成的新样本数量（每个样本也是 64×3 时序）。
-
-**响应**：`Content-Type: text/csv`，直接下载 `result.csv`，内容为 `num_samples × 64` 行数据。
-
-#### 场景二：直接生成样本（无需上传，用于快速数据增强）
+**场景二：直接生成样本（无需上传，快速数据增强）**
 
 ```json
 {
@@ -160,71 +149,176 @@ cd build
 }
 ```
 
-此时服务器使用默认生成器（类别0，即 Normal_0g）生成数据。响应同上为 CSV 文件。
+响应：`Content-Type: text/csv`，直接下载生成数据。
 
-#### 错误响应示例
+### POST `/2` —— 登录
 
-```json
-{
-    "status": "error",
-    "message": "CSV 中没有完整样本（至少需要64行）"
-}
-```
+### POST `/3` —— 注册
+
+### GET/POST `/4` —— 登出
 
 ---
 
-## 🧪 使用示例（curl）
+## 快速开始
+
+### 环境要求
+
+- Ubuntu 20.04+ / Debian 11+
+- CMake 3.10+, g++ (支持 C++17)
+- MySQL 5.7+, Redis 6.0+
+- ONNX Runtime 1.18+
+
+### 安装依赖
 
 ```bash
-# 1. 登录获取 session (通过网页 /log.html 或直接 POST 登录接口)
-#    浏览器登录后自动设置 Cookie，以下为携带 Cookie 的调用
+sudo apt update
+sudo apt install build-essential cmake libmysqlclient-dev redis-server libhiredis-dev
+```
 
-# 2. 上传 CSV 文件内容并生成 20 个新样本
-curl -X POST http://localhost:9006/diagnose \
-     -H "Content-Type: application/json" \
-     -b "session_id=your_token_here" \
-     -d '{
-           "csv_data": "0.1,0.2,0.3\n0.4,0.5,0.6\n...（共64行）",
-           "num_samples": 20
-         }' \
-     --output generated_samples.csv
+### 安装 ONNX Runtime
 
-# 3. 直接生成 10 个样本（无需上传）
-curl -X POST http://localhost:9006/diagnose \
-     -H "Content-Type: application/json" \
-     -b "session_id=your_token_here" \
-     -d '{"num_samples": 10}' \
-     --output synthetic.csv
+```bash
+# 方式一：手动下载
+wget https://github.com/microsoft/onnxruntime/releases/download/v1.18.0/onnxruntime-linux-x64-1.18.0.tgz
+tar -xzf onnxruntime-linux-x64-1.18.0.tgz -C ~/projects/CTAM-TimeGAN-Server/
+mv onnxruntime-linux-x64-1.18.0 onnxruntime
+
+# 方式二：pip 安装后指定路径
+pip install onnxruntime
+cmake -DONNXRUNTIME_ROOT=$(python -c "import onnxruntime; import os; print(os.path.dirname(onnxruntime.__file__))") ..
+```
+
+### 配置 MySQL
+
+```sql
+CREATE DATABASE tinywebserver;
+USE tinywebserver;
+CREATE TABLE user(username char(50) NULL, passwd char(50) NULL);
+INSERT INTO user VALUES ('admin', 'admin123');
+```
+
+### 编译 & 运行
+
+```bash
+cd CTAM-TimeGAN-Server
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+
+# 将 9 个 ONNX 模型放入 build/models/
+export LD_LIBRARY_PATH=$PWD/../onnxruntime/lib:$LD_LIBRARY_PATH
+sudo service mysql start
+redis-server --daemonize yes
+
+./server
+```
+
+浏览器访问 `http://服务器IP:9006`
+
+### Docker 一键部署
+
+```bash
+docker compose up -d
+```
+
+详见 [docker-compose.yml](docker-compose.yml)
+
+---
+
+## 命令行参数
+
+```
+./server [-p port] [-H mysql_host] [-l log] [-m trig] [-o linger]
+         [-s sql_num] [-t threads] [-c close_log] [-a actor]
+         [-R redis_host] [-r redis_port] [-w redis_password] [-T session_ttl]
+```
+
+| 参数 | 说明                            | 默认值    |
+| ---- | ------------------------------- | --------- |
+| -p   | 服务端口                        | 9006      |
+| -H   | MySQL 主机地址                  | 127.0.0.1 |
+| -s   | 数据库连接池大小                | 8         |
+| -t   | 线程池大小                      | 8         |
+| -a   | 并发模型 (0:Proactor 1:Reactor) | 0         |
+| -l   | 日志模式 (0同步 1异步)          | 0         |
+| -m   | 触发模式 (0~3)                  | 0         |
+| -R   | Redis 主机                      | 127.0.0.1 |
+| -r   | Redis 端口                      | 6379      |
+| -w   | Redis 密码                      | 无        |
+| -T   | 会话过期时间(秒)                | 3600      |
+
+### 模型转换 (.pt → .onnx)
+
+```python
+import torch
+
+def export_model(pt_path, onnx_path):
+    model = torch.jit.load(pt_path)
+    dummy = torch.randn(1, 64, 3)
+    torch.onnx.export(model, dummy, onnx_path,
+                      input_names=["input"], output_names=["output"])
+
+export_model("classifier.pt", "classifier.onnx")
+for i in range(8):
+    export_model(f"generator_{i}.pt", f"generator_{i}.onnx")
 ```
 
 ---
 
-## 📄 论文引用
+## 文档索引
 
-如果您在学术工作中使用本服务器或相关模型，请引用以下论文：
+| 文档                                           | 内容                        |
+| ---------------------------------------------- | --------------------------- |
+| [bench/README.md](bench/README.md)             | 压力测试完整报告            |
+| [docs/ONNX_RUNTIME.md](docs/ONNX_RUNTIME.md)   | ONNX Runtime 迁移与架构设计 |
+| [docs/REDIS_SESSION.md](docs/REDIS_SESSION.md) | Redis 会话管理设计与实现    |
+
+---
+
+## 使用示例 (curl)
+
+```bash
+# 1. 登录获取 session
+curl -X POST http://localhost:9006/2 \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     -d "user=admin&password=admin123" \
+     -c cookies.txt -L
+
+# 2. 直接生成 10 个样本
+curl -X POST http://localhost:9006/diagnose \
+     -H "Content-Type: application/json" \
+     -b cookies.txt \
+     -d '{"num_samples": 10}' \
+     --output synthetic.csv
+
+# 3. 登出
+curl -X POST http://localhost:9006/4 -b cookies.txt -L
+```
+
+---
+
+## 论文引用
+
+如果您在学术工作中使用本服务器或相关模型，请引用：
 
 https://doi.org/10.1016/j.neucom.2026.132667
 
-
 ---
 
-## 📜 许可证
+## 项目资助
 
-本项目基于 **MIT License** 开源，欢迎学术研究和工业应用。  
-模型权重文件及论文代码可于 [GitHub Repository] 获取（链接待公开）。
-
----
-
-## 🙏 致谢
-
-本工作受以下项目资助：  
-- 青岛市自然科学基金 (24-4-4-zrjj-168-jch)  
-- 山东省自然科学基金 (ZR2025MS860)  
-- 黑龙江省自然科学基金 (YQ2024E036)  
-- 中央高校基本科研业务费专项资金 (3072025ZX2604)  
+- 青岛市自然科学基金 (24-4-4-zrjj-168-jch)
+- 山东省自然科学基金 (ZR2025MS860)
+- 黑龙江省自然科学基金 (YQ2024E036)
+- 中央高校基本科研业务费专项资金 (3072025ZX2604)
 - 泰山学者计划 (tsqn202312317)
 
 ---
 
-## 📬 联系方式
+## 许可证
+
+MIT License
+
+## 联系方式
+
 **项目维护**：Wei Wang (heu_wangwei@163.com)
