@@ -1,40 +1,54 @@
-# 1. 基础镜像
-FROM ubuntu:20.04
+# ============ 编译阶段 ============
+FROM ubuntu:22.04 AS builder
 
-# 2. 作者
-LABEL maintainer="WangWei"
+ENV DEBIAN_FRONTEND=noninteractive
+ENV ONNXRUNTIME_VERSION=1.18.0
 
-# 3. 环境变量
+RUN apt update && apt install -y \
+    build-essential cmake \
+    libmysqlclient-dev \
+    libhiredis-dev \
+    wget ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# 下载并安装 ONNX Runtime
+RUN wget -q https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz \
+    && tar -xzf onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz \
+    && mv onnxruntime-linux-x64-${ONNXRUNTIME_VERSION} /opt/onnxruntime \
+    && rm onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz
+
+WORKDIR /src
+COPY . .
+
+RUN mkdir -p build && cd build \
+    && cmake -DCMAKE_BUILD_TYPE=Release \
+             -DONNXRUNTIME_ROOT=/opt/onnxruntime \
+             .. \
+    && make -j$(nproc)
+
+# ============ 运行阶段 ============
+FROM ubuntu:22.04 AS runtime
+
 ENV DEBIAN_FRONTEND=noninteractive
 
-# ================= 核心修改在这里 =================
-# 4. 换源！把官方源替换成阿里云源，飞一般的速度
-RUN sed -i 's/archive.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list && \
-    sed -i 's/security.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list
-
-# 5. 安装依赖 (现在会非常快了)
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    libmysqlclient-dev \
-    mysql-client \
+RUN apt update && apt install -y \
+    libmysqlclient21 \
+    libhiredis0.14 \
     && rm -rf /var/lib/apt/lists/*
-# =================================================
 
-# 6. 工作目录
+# 复制 ONNX Runtime 运行时库
+COPY --from=builder /opt/onnxruntime/lib/libonnxruntime.so* /usr/local/lib/
+RUN ldconfig
+
 WORKDIR /app
 
-# 7. 复制代码
-COPY . /app
+# 复制可执行文件
+COPY --from=builder /src/build/server /app/server
 
-# 8. 编译
-RUN mkdir build && \
-    cd build && \
-    cmake .. && \
-    make
+# 复制静态资源
+COPY --from=builder /src/build/root /app/root
+RUN mkdir -p /app/models
 
-# 9. 暴露端口
 EXPOSE 9006
 
-# 10. 启动命令
-CMD ["sh", "-c", "cd build && cp server .. && cd .. && ./server"]
+CMD ["./server", "-H", "mysql", "-R", "redis"]

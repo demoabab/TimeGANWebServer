@@ -32,10 +32,12 @@ WebServer::~WebServer()
     free(m_root);
 }
 
-void WebServer::init(int port, string user, string passWord, string databaseName, int log_write, 
-                     int opt_linger, int trigmode, int sql_num, int thread_num, int close_log, int actor_model)
+void WebServer::init(int port, string mysql_host, string user, string passWord,
+                     string databaseName, int log_write, int opt_linger, int trigmode,
+                     int sql_num, int thread_num, int close_log, int actor_model)
 {
     m_port = port;
+    m_mysql_host = mysql_host;
     m_user = user;
     m_passWord = passWord;
     m_databaseName = databaseName;
@@ -92,7 +94,7 @@ void WebServer::sql_pool()
 {
     //初始化数据库连接池
     m_connPool = connection_pool::GetInstance();
-    m_connPool->init("127.0.0.1", m_user, m_passWord, m_databaseName, 3306, m_sql_num, m_close_log);
+    m_connPool->init(m_mysql_host.c_str(), m_user, m_passWord, m_databaseName, 3306, m_sql_num, m_close_log);
 
     //初始化数据库读取表
     users[0].initmysql_result(m_connPool);

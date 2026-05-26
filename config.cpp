@@ -32,6 +32,9 @@ Config::Config(){
     //并发模型,默认是proactor
     actor_model = 0;
 
+    // MySQL 默认配置
+    strcpy(mysql_host, "127.0.0.1");
+
     // Redis 默认配置
     strcpy(redis_host, "127.0.0.1");
     redis_port = 6379;
@@ -41,7 +44,7 @@ Config::Config(){
 
 void Config::parse_arg(int argc, char*argv[]){
     int opt;
-    const char *str = "p:l:m:o:s:t:c:a:R:r:w:T:";
+    const char *str = "p:l:m:o:s:t:c:a:H:R:r:w:T:";
     while ((opt = getopt(argc, argv, str)) != -1)
     {
         switch (opt)
@@ -84,6 +87,11 @@ void Config::parse_arg(int argc, char*argv[]){
         case 'a':
         {
             actor_model = atoi(optarg);
+            break;
+        }
+        case 'H':
+        {
+            strncpy(mysql_host, optarg, sizeof(mysql_host) - 1);
             break;
         }
         case 'R':

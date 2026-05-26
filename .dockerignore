@@ -1,0 +1,11 @@
+build/
+libtorch/
+onnxruntime/
+*.pt
+*.pth
+*.onnx
+*.log
+*.tgz
+.git/
+.vscode/
+.idea/

@@ -43,6 +43,9 @@ public:
     //并发模型选择
     int actor_model;
 
+    // MySQL 配置
+    char mysql_host[64];
+
     // Redis 配置
     char redis_host[64];
     int redis_port;
